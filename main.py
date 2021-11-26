@@ -50,7 +50,7 @@ def evaluate_model(model, test_loader, loss_function):
         correct += pred.eq(labels.view_as(pred)).sum().item()
         total += labels.size(0)
 
-    average_loss = total_loss / total
+    average_loss = total_loss / len(test_loader)
     return average_loss, correct, total
 
 def load_cifar10_data(batch_size):
@@ -78,10 +78,8 @@ def load_cifar10_data(batch_size):
     return train_loader, test_loader
 
 def train(
-    model : nn.Module,
-    epochs : int,
-    train_loader : DataLoader,
-    validation_loader,
+    model : nn.Module, epochs : int,
+    train_loader : DataLoader, validation_loader,
     loss_func,
     optimizer,
     scheduler,
@@ -144,20 +142,21 @@ def train(
             valid_accr = 100*valid_correct/valid_total
             loss_valids.append(valid_loss)
             accr_valids.append(valid_accr)
-            if min(accr_valids) == valid_accr and save_path is not None:
+            if max(accr_valids) == valid_accr and save_path is not None:
                 torch.save(model.state_dict(), save_path)
+                print(f"saved model to {save_path}")
             print(f"Validation epoch {epoch+1} / {epochs}",
                   f"Loss {valid_loss:.4f}, Accuracy {valid_accr:.2f}%")
-
+        print()
     print(f"Total training time {(time.time()-start)/60:.2f} minutes taken")
     if plot:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
         ax1.plot(loss_values)
         ax1.plot(loss_valids)
-        ax1.set_title("Training loss")
+        ax1.set_title("Loss")
         ax2.plot(accr_values)
         ax2.plot(accr_valids)
-        ax2.set_title("Training accuracy (%)")
+        ax2.set_title("Accuracy (%)")
 
 class Solver:
     def __init__(self, model, epochs, loss_func, optimizer, scheduler):
@@ -201,10 +200,75 @@ class Config:
         self.scheduler = scheduler
         self.loss_function = loss_function
 
+# 66.77%
+def cifar10_LeNet():
+    model = LeNet()
+    global BATCH_SIZE, EPOCHS
+    BATCH_SIZE = 2000
+    EPOCHS = 50
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.03, momentum=0.95)
+    config_LeNet = Config(
+        model = model,
+        optimizer = optimizer,
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True, factor=0.2),
+        loss_function = torch.nn.CrossEntropyLoss()
+    )
+    solve_cifar10(config_LeNet)
+
+# 85.03% (76 min training)
+def cifar10_AlexNet():
+    model = AlexNet()
+    global BATCH_SIZE, EPOCHS
+    BATCH_SIZE = 500
+    EPOCHS = 50
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.0005, momentum=0.9)
+    config_AlexNet = Config(
+        model = model,
+        optimizer = optimizer,
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, verbose=True, factor=0.1),
+        loss_function = torch.nn.CrossEntropyLoss()
+    )
+    solve_cifar10(config_AlexNet)
+
+# 83.16% (31 min training)
+def cifar10_SmallAlexNet():
+    model = SmallAlexNet()
+    global BATCH_SIZE, EPOCHS
+    BATCH_SIZE = 500
+    EPOCHS = 50
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.0005, momentum=0.9)
+    config_AlexNet = Config(
+        model = model,
+        optimizer = optimizer,
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True, factor=0.1),
+        loss_function = torch.nn.CrossEntropyLoss()
+    )
+    solve_cifar10(config_AlexNet)
+
+# vgg11 : 88.79% (17 min training)
+# vgg13 : 90.40% (24 min training)
+# vgg16 : 90.73% (31 min training)
+# vgg19 : 90.01% (38 min training)
+def cifar10_VGGNet(vggnet_option):
+    model = VGGNet(vggnet_option)
+    global BATCH_SIZE, EPOCHS
+    BATCH_SIZE = 100
+    EPOCHS = 50
+    #optimizer = torch.optim.SGD(model.parameters(), lr=0.005, weight_decay=0.0005, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.0005, momentum=0.9)
+    config = Config(
+        model = model,
+        optimizer = optimizer,
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor = 0.5),
+        loss_function = torch.nn.CrossEntropyLoss()
+    )
+    solve_cifar10(config)
+
+# 89.94% (204 min training)
 def cifar10_GoogLeNet():
     model = GoogLeNet()
     global BATCH_SIZE, EPOCHS
-    BATCH_SIZE = 500
+    BATCH_SIZE = 50
     EPOCHS = 50
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.0005, momentum=0.9)
     config_GoogLeNet = Config(
@@ -215,19 +279,44 @@ def cifar10_GoogLeNet():
     )
     solve_cifar10(config_GoogLeNet)
 
-def cifar10_LeNet():
-    model = LeNetRegularized()
+def cifar10_ResNet(resnet_option):
+    model = ResNet(resnet_option)
     global BATCH_SIZE, EPOCHS
-    BATCH_SIZE = 2000
-    EPOCHS = 200
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.0005, momentum=0.95)
-    config_LeNet = Config(
+    BATCH_SIZE = 500
+    EPOCHS = 100
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, weight_decay=0.0001, momentum=0.9)
+    config = Config(
         model = model,
         optimizer = optimizer,
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.96),
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5),
         loss_function = torch.nn.CrossEntropyLoss()
     )
-    solve_cifar10(config_LeNet)
+    solve_cifar10(config)
+
+def cifar10_LargeResNet(resnet_option):
+    model = LargeResNet(resnet_option)
+    global BATCH_SIZE, EPOCHS
+    BATCH_SIZE = 50
+    EPOCHS = 100
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, weight_decay=0.0001, momentum=0.9)
+    config = Config(
+        model = model,
+        optimizer = optimizer,
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, factor=0.5),
+        loss_function = torch.nn.CrossEntropyLoss()
+    )
+    solve_cifar10(config)
 
 #cifar10_GoogLeNet()
-cifar10_LeNet()
+#cifar10_LeNet()
+#cifar10_AlexNet()
+#cifar10_SmallAlexNet()
+RESNET_OPTIONS = ['resnet20-cifar', 'resnet32-cifar', 'resnet44-cifar', 'resnet56-cifar']
+for option in RESNET_OPTIONS:
+    cifar10_ResNet(option)
+
+VGGNET_OPTIONS = ['vgg11', 'vgg13', 'vgg16', 'vgg19']
+#for option in VGGNET_OPTIONS:
+    #cifar10_VGGNet(option)
+#cifar10_GoogLeNet()
+#cifar10_LargeResNet('resnet-orig101')
